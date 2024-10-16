@@ -1,0 +1,104 @@
+#include <DHT.h>
+#include <Adafruit_NeoPixel.h>
+
+#define PIN_LED      8
+#define NUM_LED      30
+#define PIN_TRIG     7
+#define PIN_ECHO     6
+#define DHTPIN       2
+#define DHTTYPE      DHT11
+
+const int umiditateSolPin = A1;
+const int umiditateSolUscat = 385;
+const int umiditateSolUd = 1021;
+
+const int pinVentilator1 = 9;
+const int pinVentilator2 = 10;
+
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LED, PIN_LED, NEO_GRB + NEO_KHZ800);
+DHT dht(DHTPIN, DHTTYPE);
+
+unsigned long previousProxReadTime = 0;
+unsigned long previousTempHumidityReadTime = 0;
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println("Citire date de la senzori: ");
+  dht.begin();
+
+  strip.begin();
+  strip.show();
+  pinMode(PIN_TRIG, OUTPUT);
+  pinMode(PIN_ECHO, INPUT);
+  pinMode(pinVentilator1, OUTPUT);
+  pinMode(pinVentilator2, OUTPUT);
+}
+
+void loop() {
+  unsigned long currentMillis = millis();
+
+  // Citire senzor de apropiere la fiecare 0.5 secunde
+  if (currentMillis - previousProxReadTime >= 500) {
+    previousProxReadTime = currentMillis;
+
+    long duration, distance;
+    digitalWrite(PIN_TRIG, LOW);
+    delayMicroseconds(2);
+    digitalWrite(PIN_TRIG, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(PIN_TRIG, LOW);
+    duration = pulseIn(PIN_ECHO, HIGH);
+    distance = (duration / 2) / 29.1;
+
+    // Dacă distanța este mai mică de 30 cm, se va aprinde banda LED în alb
+     if (distance < 30) {
+      colorWipe(strip.Color(71, 69, 23), 10);
+    } else {
+      colorWipe(strip.Color(0, 0, 0), 50);
+    }
+  }
+
+  // Citim temperatura și umiditatea din sol la fiecare 5 secunde
+  if (currentMillis - previousTempHumidityReadTime >= 2000) {
+    previousTempHumidityReadTime = currentMillis;
+
+    float temperatura = dht.readTemperature();
+    float umiditate = dht.readHumidity();
+
+    int umiditateSol = analogRead(umiditateSolPin);
+    int umiditateSolCalibrata = map(umiditateSol, umiditateSolUd, umiditateSolUscat, 0, 100);
+    umiditateSolCalibrata = constrain(umiditateSolCalibrata, 0, 100);
+
+    Serial.print("Temperatura: ");
+    Serial.print(temperatura);
+    Serial.print(" °C | Umiditate: ");
+    Serial.print(umiditate);
+    Serial.print(" % | Umiditate sol: ");
+    Serial.println(umiditateSolCalibrata);
+
+    // Dacă umiditatea din sol scade sub 30% sau temperatura este mai mică de 20°C sau mai mare de 30°C, banda LED va fi roșie
+    if (umiditateSolCalibrata < 30 || temperatura < 20 || temperatura > 30) {
+      colorWipe(strip.Color(255, 0, 0), 10);
+    } 
+
+    // Dacă temperatura depășește 25 grade Celsius, pornim ventilatoarele
+    if (temperatura > 25.0) {
+      Serial.println("Temperatura depășește 26°C - Ventilatoare activate!");
+      // Activează ventilatoarele
+      digitalWrite(pinVentilator1, HIGH);
+      digitalWrite(pinVentilator2, HIGH);
+    } else {
+      // Dezactivează ventilatoarele
+      digitalWrite(pinVentilator1, LOW);
+      digitalWrite(pinVentilator2, LOW);
+    }
+  }
+}
+
+void colorWipe(uint32_t color, int wait) {
+  for(int i = 0; i < strip.numPixels(); i++) {
+    strip.setPixelColor(i, color);
+  }
+  strip.show();
+  delay(wait);
+}
